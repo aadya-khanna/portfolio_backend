@@ -52,12 +52,21 @@ const spotifyTokensFilePath = path.join(__dirname, 'spotify_tokens.json');
 const readSpotifyTokens = () => {
   console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens from file.');
   try {
+    // Check if the file exists, if not, create it with an empty object
+    if (!fs.existsSync(spotifyTokensFilePath)) {
+      console.log('Backend: Spotify tokens file not found, creating a new one.');
+      fs.writeFileSync(spotifyTokensFilePath, JSON.stringify({}, null, 2), 'utf8');
+      return {}; // Return empty object for a new file
+    }
+
     const data = fs.readFileSync(spotifyTokensFilePath, 'utf8');
     console.log('Backend: Successfully read Spotify tokens data.');
-    return JSON.parse(data);
+    // Ensure the parsed data is an object, default to empty object if not
+    const parsedData = JSON.parse(data);
+    return typeof parsedData === 'object' && parsedData !== null ? parsedData : {};
   } catch (error) {
     console.error(`Backend: Error reading Spotify tokens file ${spotifyTokensFilePath}:`, error.message);
-    // If file doesn't exist or is invalid JSON, return empty object
+    // If file is invalid JSON, return empty object
     return {};
   }
 };
