@@ -62,7 +62,11 @@ const generateRandomString = (length) => {
   return text;
 };
 
-app.use(cors());
+app.use(cors({
+  origin: "https://portfolio-frontend-seven-ashy.vercel.app",
+  credentials: true
+}));
+
 app.use(express.json()); // Add middleware to parse JSON request bodies
 import cookieParser from 'cookie-parser';
 app.use(cookieParser());
