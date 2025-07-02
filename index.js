@@ -187,7 +187,7 @@ app.get('/callback', async (req, res) => {
         const refresh_token = data.refresh_token;
 
         // Redirect to frontend with tokens
-        res.redirect(FRONTEND_URI + '/#' +
+        res.redirect(FRONTEND_URI + '/about#' +
           querystring.stringify({
             access_token: access_token,
             refresh_token: refresh_token,
