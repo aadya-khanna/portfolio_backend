@@ -279,14 +279,12 @@ const refreshStoredAccessToken = async () => {
 
     if (response.ok) {
       console.log('Backend: Token refresh successful.');
-      // Update stored tokens with new access token and expiry
-      writeSpotifyTokens({
-        ...tokens,
-        access_token: data.access_token,
-        expires_in: data.expires_in,
-        timestamp: Date.now(),
-        refresh_token: data.refresh_token || tokens.refresh_token // Spotify might return a new refresh token
-      });
+      console.log('Backend: Token refresh successful.');
+      // Update ONLY access token and expiry in process.env for current runtime
+      process.env.SPOTIFY_ACCESS_TOKEN = data.access_token;
+      process.env.SPOTIFY_TOKEN_EXPIRY = data.expires_in.toString();
+      process.env.SPOTIFY_TOKEN_TIMESTAMP = Date.now().toString();
+      // Note: The persistent refresh token must be set externally in environment configuration.
       return data.access_token;
     } else {
       console.error('Backend: Token refresh failed:', data);
