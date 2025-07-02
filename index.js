@@ -340,7 +340,8 @@ app.get('/currently-playing', async (req, res) => {
 
     const data = await response.json();
     console.log('Backend: Spotify API /currently-playing response data:', data);
-
+    console.log('Backend: Raw data received from Spotify API:', JSON.stringify(data, null, 2));
+ 
     if (response.ok) {
       res.send(data);
     } else {
