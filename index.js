@@ -323,7 +323,9 @@ app.get('/currently-playing', async (req, res) => {
   } else {
     console.log('Backend: Using valid access token.');
   }
-
+ 
+  console.log('Backend: Access token being used for Spotify API call:', access_token ? 'Token available' : 'No token');
+ 
   const options = {
     headers: {
       'Authorization': 'Bearer ' + access_token
