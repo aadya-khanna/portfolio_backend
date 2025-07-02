@@ -56,10 +56,10 @@ const readSpotifyTokens = () => {
   const timestamp = parseInt(process.env.SPOTIFY_TOKEN_TIMESTAMP, 10);
 
   if (access_token && refresh_token && !isNaN(expires_in) && !isNaN(timestamp)) {
-    console.log('Backend: readSpotifyTokens - Tokens found and appear valid.'); // Added log
+    console.log('Backend: Successfully read Spotify tokens from environment variables.');
     return { access_token, refresh_token, expires_in, timestamp };
   } else {
-    console.log('Backend: readSpotifyTokens - Tokens not found or incomplete.'); // Added log
+    console.log('Backend: Spotify tokens not found or incomplete in environment variables.');
     return {};
   }
 };
@@ -255,14 +255,11 @@ app.get('/callback', async (req, res) => {
 
 // Helper function to refresh access token using stored refresh token
 const refreshStoredAccessToken = async () => {
-  console.log('Backend: refreshStoredAccessToken - Attempting token refresh.'); // Added log
   const tokens = readSpotifyTokens();
   const refresh_token = tokens.refresh_token;
 
-  console.log('Backend: refreshStoredAccessToken - read refresh_token:', refresh_token ? 'Available' : 'Unavailable'); // Added log
-
   if (!refresh_token) {
-    console.error('Backend: refreshStoredAccessToken - No refresh token available to refresh.'); // Modified log
+    console.error('Backend: No refresh token available to refresh.');
     return null;
   }
 
@@ -284,8 +281,8 @@ const refreshStoredAccessToken = async () => {
     const data = await response.json();
 
     if (response.ok) {
-      console.log('Backend: refreshStoredAccessToken - Token refresh successful.'); // Modified log
-      console.log('Backend: refreshStoredAccessToken - Token refresh successful.'); // Modified log
+      console.log('Backend: Token refresh successful.');
+      console.log('Backend: Token refresh successful.');
       // Update ONLY access token and expiry in process.env for current runtime
       process.env.SPOTIFY_ACCESS_TOKEN = data.access_token;
       process.env.SPOTIFY_TOKEN_EXPIRY = data.expires_in.toString();
@@ -293,13 +290,13 @@ const refreshStoredAccessToken = async () => {
       // Note: The persistent refresh token must be set externally in environment configuration.
       return data.access_token;
     } else {
-      console.error('Backend: refreshStoredAccessToken - Token refresh failed:', data); // Modified log
+      console.error('Backend: Token refresh failed:', data);
       // Clear tokens if refresh fails
       writeSpotifyTokens({}); // This will effectively clear the environment variables
       return null;
     }
   } catch (error) {
-    console.error('Backend: refreshStoredAccessToken - Error refreshing token:', error); // Modified log
+    console.error('Backend: Error refreshing token:', error);
     writeSpotifyTokens({}); // Clear tokens on error
     return null;
   }
@@ -328,7 +325,7 @@ app.get('/currently-playing', async (req, res) => {
     console.log('Backend: Using valid access token.');
   }
 
-  console.log('Backend: After token check/refresh - access_token:', access_token ? 'Available' : 'Unavailable'); // Added log
+  console.log('Backend: Access token being used for Spotify API call:', access_token ? 'Token available' : 'No token');
 
   const options = {
     headers: {
@@ -385,8 +382,6 @@ app.get('/recently-played', async (req, res) => {
   } else {
     console.log('Backend: Using valid access token.');
   }
-
-  console.log('Backend: After token check/refresh - access_token:', access_token ? 'Available' : 'Unavailable'); // Added log
 
   const options = {
     headers: {
