@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import querystring from 'querystring';
+import fs from 'fs'; // Import the file system module
 
 
 dotenv.config();
@@ -18,9 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const notesFilePath = path.join(__dirname, 'notes.json');
-// Removed spotifyTokensFilePath as tokens will be stored in environment variables
 
-// Helper functions for reading/writing notes
 const readNotes = () => {
   try {
     console.log(`Backend: Attempting to read notes from: ${notesFilePath}`);
@@ -49,24 +48,28 @@ const writeNotes = (notes) => {
 
 // Helper functions for reading/writing Spotify tokens using environment variables
 const readSpotifyTokens = () => {
-  console.log('Backend: Attempting to read Spotify tokens from environment variables.');
+  console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens.'); // Modified log
   const access_token = process.env.SPOTIFY_ACCESS_TOKEN;
   const refresh_token = process.env.SPOTIFY_REFRESH_TOKEN;
   const expires_in = parseInt(process.env.SPOTIFY_TOKEN_EXPIRY, 10);
   const timestamp = parseInt(process.env.SPOTIFY_TOKEN_TIMESTAMP, 10);
 
+  console.log('Backend: readSpotifyTokens - Read from env: access_token:', access_token ? 'Available' : 'Unavailable', 'refresh_token:', refresh_token ? 'Available' : 'Unavailable'); // Added log
+
   if (access_token && refresh_token && !isNaN(expires_in) && !isNaN(timestamp)) {
-    console.log('Backend: Successfully read Spotify tokens from environment variables.');
+    console.log('Backend: readSpotifyTokens - Tokens found and appear valid.');
     return { access_token, refresh_token, expires_in, timestamp };
   } else {
-    console.log('Backend: Spotify tokens not found or incomplete in environment variables.');
+    console.log('Backend: readSpotifyTokens - Tokens not found or incomplete.');
     return {};
   }
 };
 // change 
 
 const writeSpotifyTokens = (tokens) => {
-  console.log('Backend: Attempting to write Spotify tokens to environment variables.');
+  console.log('Backend: writeSpotifyTokens - Attempting to write Spotify tokens.'); // Modified log
+  console.log('Backend: writeSpotifyTokens - Tokens to write: access_token:', tokens.access_token ? 'Available' : 'Unavailable', 'refresh_token:', tokens.refresh_token ? 'Available' : 'Unavailable'); // Added log
+
   if (tokens.access_token) {
     process.env.SPOTIFY_ACCESS_TOKEN = tokens.access_token;
   }
@@ -79,7 +82,7 @@ const writeSpotifyTokens = (tokens) => {
   if (tokens.timestamp) {
     process.env.SPOTIFY_TOKEN_TIMESTAMP = tokens.timestamp.toString();
   }
-  console.log('Backend: Spotify tokens written to environment variables.');
+  console.log('Backend: writeSpotifyTokens - Finished writing to environment variables.'); // Modified log
 };
 
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -228,11 +231,12 @@ app.get('/callback', async (req, res) => {
         const access_token = data.access_token;
         const refresh_token = data.refresh_token;
  
-        // Save tokens to environment variables for current runtime
+        // Save tokens using writeSpotifyTokens (writes to process.env)
+        console.log('Backend: /callback - Calling writeSpotifyTokens after successful token exchange.'); // Added log
         writeSpotifyTokens({ access_token, refresh_token, expires_in: data.expires_in, timestamp: Date.now() });
-        console.log('Backend: Spotify tokens saved to environment variables for current runtime.');
+        console.log('Backend: /callback - writeSpotifyTokens called.'); // Added log
         console.log('Backend: >>> IMPORTANT: Your Spotify Refresh Token is: <<<', refresh_token); // Clear log for refresh token
- 
+
         // Redirect to frontend (optional, can redirect to a success page)
         res.redirect(FRONTEND_URI + '/about'); // Redirect without tokens in URL
       } else {
@@ -285,19 +289,23 @@ const refreshStoredAccessToken = async () => {
       console.log('Backend: Token refresh successful.');
       console.log('Backend: Token refresh successful.');
       // Update ONLY access token and expiry in process.env for current runtime
+      console.log('Backend: refreshStoredAccessToken - Updating process.env with new tokens.'); // Added log
       process.env.SPOTIFY_ACCESS_TOKEN = data.access_token;
       process.env.SPOTIFY_TOKEN_EXPIRY = data.expires_in.toString();
       process.env.SPOTIFY_TOKEN_TIMESTAMP = Date.now().toString();
       // Note: The persistent refresh token must be set externally in environment configuration.
+      console.log('Backend: refreshStoredAccessToken - process.env updated.'); // Added log
       return data.access_token;
     } else {
-      console.error('Backend: Token refresh failed:', data);
+      console.error('Backend: refreshStoredAccessToken - Token refresh failed:', data); // Modified log
       // Clear tokens if refresh fails
+      console.log('Backend: refreshStoredAccessToken - Clearing tokens due to refresh failure.'); // Added log
       writeSpotifyTokens({}); // This will effectively clear the environment variables
       return null;
     }
   } catch (error) {
-    console.error('Backend: Error refreshing token:', error);
+    console.error('Backend: refreshStoredAccessToken - Error refreshing token:', error); // Modified log
+    console.log('Backend: refreshStoredAccessToken - Clearing tokens due to error.'); // Added log
     writeSpotifyTokens({}); // Clear tokens on error
     return null;
   }
