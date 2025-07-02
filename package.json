@@ -12,10 +12,12 @@
   "description": "",
   "dependencies": {
     "axios": "^1.10.0",
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
-    "node-fetch": "^3.3.2",
-    "cookie-parser": "^1.4.6"
+    "mongodb": "^6.17.0",
+    "mongoose": "^8.16.1",
+    "node-fetch": "^3.3.2"
   }
 }

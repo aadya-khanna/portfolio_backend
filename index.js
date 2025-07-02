@@ -5,11 +5,19 @@ import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import querystring from 'querystring';
 import fs from 'fs'; // Import the file system module
+import mongoose from 'mongoose'; // Import mongoose
 
 
 dotenv.config();
 
-const DELETE_SECRET = process.env.DELETE_SECRET; // Read the delete secret from environment variables
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI;
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('Backend: MongoDB connected successfully.'))
+  .catch(err => console.error('Backend: MongoDB connection error:', err));
+
+const DELETE_SECRET = process.env.DELETE_SECRET; 
 
 const app = express();
 const port = process.env.PORT || 8888;
@@ -18,33 +26,20 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const notesFilePath = path.join(__dirname, 'notes.json');
+// Define Note Schema
+const noteSchema = new mongoose.Schema({
+  text: {
+    type: String,
+    required: true
+  },
+  // Mongoose automatically adds an _id field
+  // We can keep the timestamp-based ID for now if needed, or rely on _id
+  // For simplicity, let's rely on Mongoose's _id
+});
 
-const readNotes = () => {
-  try {
-    console.log(`Backend: Attempting to read notes from: ${notesFilePath}`);
-    const data = fs.readFileSync(notesFilePath, 'utf8');
-    console.log('Backend: Successfully read notes data.');
-    // Ensure the parsed data is an array, default to empty array if not
-    const parsedData = JSON.parse(data);
-    return Array.isArray(parsedData) ? parsedData : [];
-  } catch (error) {
-    console.error(`Backend: Error reading notes file ${notesFilePath}:`, error.message);
-    // If file doesn't exist or is invalid JSON, return empty array
-    return [];
-  }
-};
+// Create Note Model
+const Note = mongoose.model('Note', noteSchema);
 
-const writeNotes = (notes) => {
-  console.log(`Backend: Attempting to write notes to: ${notesFilePath}`);
-  console.log('Backend: Writing notes data:', notes);
-  try {
-    fs.writeFileSync(notesFilePath, JSON.stringify(notes, null, 2), 'utf8');
-    console.log('Backend: Successfully wrote notes.');
-  } catch (error) {
-    console.error(`Backend: Error writing notes file ${notesFilePath}:`, error.message);
-  }
-};
 
 // Helper functions for reading/writing Spotify tokens using a file
 const spotifyTokensFilePath = path.join(__dirname, 'spotify_tokens.json');
@@ -110,14 +105,19 @@ import cookieParser from 'cookie-parser';
 app.use(cookieParser());
 
 // Sticky notes API endpoints
-app.get('/api/notes', (req, res) => {
+app.get('/api/notes', async (req, res) => {
   console.log('Backend: GET /api/notes endpoint hit');
-  const notes = readNotes();
-  console.log('Backend: Sending notes:', notes);
-  res.json(notes);
+  try {
+    const notes = await Note.find(); // Fetch all notes from MongoDB
+    console.log('Backend: Sending notes:', notes);
+    res.json(notes);
+  } catch (error) {
+    console.error('Backend: Error fetching notes from MongoDB:', error);
+    res.status(500).json({ error: 'Error fetching notes' });
+  }
 });
 
-app.post('/api/notes', (req, res) => {
+app.post('/api/notes', async (req, res) => {
   console.log('Backend: POST /api/notes endpoint hit');
   const newNoteText = req.body.text;
   console.log('Backend: Received new note text:', newNoteText);
@@ -126,28 +126,23 @@ app.post('/api/notes', (req, res) => {
     return res.status(400).json({ error: 'Note text is required' });
   }
 
-  const notes = readNotes();
-  console.log('Backend: Existing notes before adding new:', notes);
-  // Assign a simple unique ID (timestamp)
-  const newNote = {
-    id: Date.now(),
-    text: newNoteText
-  };
-  notes.push(newNote);
-  console.log('Backend: Notes array after adding new:', notes);
-  writeNotes(notes);
-
-  console.log('Backend: Note added successfully. Sending 201 response.');
-  res.status(201).json({ message: 'Note added successfully', note: newNote });
+  try {
+    const newNote = new Note({ text: newNoteText }); // Create a new Note instance
+    await newNote.save(); // Save the new note to MongoDB
+    console.log('Backend: Note added successfully to MongoDB.');
+    res.status(201).json({ message: 'Note added successfully', note: newNote });
+  } catch (error) {
+    console.error('Backend: Error adding note to MongoDB:', error);
+    res.status(500).json({ error: 'Error adding note' });
+  }
 });
 
 // Sticky notes DELETE endpoint
-app.delete('/api/notes/:id', (req, res) => {
-  const noteId = parseInt(req.params.id, 10);
+app.delete('/api/notes/:id', async (req, res) => {
+  const noteId = req.params.id; // Get the note ID from the URL
   const receivedSecret = req.body.deleteSecret; // Get the secret from the request body
 
-  console.log('Received secret:',receivedSecret);
-
+  console.log('Received secret:', receivedSecret);
   console.log(`Backend: DELETE /api/notes/${noteId} endpoint hit`);
 
   // Check if the received secret matches the configured secret
@@ -156,15 +151,20 @@ app.delete('/api/notes/:id', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const notes = readNotes();
-  const initialLength = notes.length;
-  const updatedNotes = notes.filter(note => note.id !== noteId);
+  try {
+    // Find and delete the note by its MongoDB _id
+    const result = await Note.findByIdAndDelete(noteId);
 
-  if (updatedNotes.length < initialLength) {
-    writeNotes(updatedNotes);
-    res.json({ message: 'Note deleted successfully' });
-  } else {
-    res.status(404).json({ error: 'Note not found' });
+    if (result) {
+      console.log(`Backend: Note with ID ${noteId} deleted successfully from MongoDB.`);
+      res.json({ message: 'Note deleted successfully' });
+    } else {
+      console.warn(`Backend: Note with ID ${noteId} not found.`);
+      res.status(404).json({ error: 'Note not found' });
+    }
+  } catch (error) {
+    console.error(`Backend: Error deleting note with ID ${noteId} from MongoDB:`, error);
+    res.status(500).json({ error: 'Error deleting note' });
   }
 });
 
