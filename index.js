@@ -46,43 +46,30 @@ const writeNotes = (notes) => {
   }
 };
 
-// Helper functions for reading/writing Spotify tokens using environment variables
+// Helper functions for reading/writing Spotify tokens using a file
+const spotifyTokensFilePath = path.join(__dirname, 'spotify_tokens.json');
+
 const readSpotifyTokens = () => {
-  console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens.'); // Modified log
-  const access_token = process.env.SPOTIFY_ACCESS_TOKEN;
-  const refresh_token = process.env.SPOTIFY_REFRESH_TOKEN;
-  const expires_in = parseInt(process.env.SPOTIFY_TOKEN_EXPIRY, 10);
-  const timestamp = parseInt(process.env.SPOTIFY_TOKEN_TIMESTAMP, 10);
-
-  console.log('Backend: readSpotifyTokens - Read from env: access_token:', access_token ? 'Available' : 'Unavailable', 'refresh_token:', refresh_token ? 'Available' : 'Unavailable'); // Added log
-
-  if (access_token && refresh_token && !isNaN(expires_in) && !isNaN(timestamp)) {
-    console.log('Backend: readSpotifyTokens - Tokens found and appear valid.');
-    return { access_token, refresh_token, expires_in, timestamp };
-  } else {
-    console.log('Backend: readSpotifyTokens - Tokens not found or incomplete.');
+  console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens from file.');
+  try {
+    const data = fs.readFileSync(spotifyTokensFilePath, 'utf8');
+    console.log('Backend: Successfully read Spotify tokens data.');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error(`Backend: Error reading Spotify tokens file ${spotifyTokensFilePath}:`, error.message);
+    // If file doesn't exist or is invalid JSON, return empty object
     return {};
   }
 };
-// change 
 
 const writeSpotifyTokens = (tokens) => {
-  console.log('Backend: writeSpotifyTokens - Attempting to write Spotify tokens.'); // Modified log
-  console.log('Backend: writeSpotifyTokens - Tokens to write: access_token:', tokens.access_token ? 'Available' : 'Unavailable', 'refresh_token:', tokens.refresh_token ? 'Available' : 'Unavailable'); // Added log
-
-  if (tokens.access_token) {
-    process.env.SPOTIFY_ACCESS_TOKEN = tokens.access_token;
+  console.log('Backend: writeSpotifyTokens - Attempting to write Spotify tokens to file.');
+  try {
+    fs.writeFileSync(spotifyTokensFilePath, JSON.stringify(tokens, null, 2), 'utf8');
+    console.log('Backend: Successfully wrote Spotify tokens to file.');
+  } catch (error) {
+    console.error(`Backend: Error writing Spotify tokens file ${spotifyTokensFilePath}:`, error.message);
   }
-  if (tokens.refresh_token) {
-    process.env.SPOTIFY_REFRESH_TOKEN = tokens.refresh_token;
-  }
-  if (tokens.expires_in) {
-    process.env.SPOTIFY_TOKEN_EXPIRY = tokens.expires_in.toString();
-  }
-  if (tokens.timestamp) {
-    process.env.SPOTIFY_TOKEN_TIMESTAMP = tokens.timestamp.toString();
-  }
-  console.log('Backend: writeSpotifyTokens - Finished writing to environment variables.'); // Modified log
 };
 
 const CLIENT_ID = process.env.CLIENT_ID;
