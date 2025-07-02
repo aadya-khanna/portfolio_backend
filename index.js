@@ -1,11 +1,10 @@
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import querystring from 'querystring';
 
-import fs from 'fs';
-import path from 'path';
 
 dotenv.config();
 
@@ -19,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const notesFilePath = path.join(__dirname, 'notes.json');
+// Removed spotifyTokensFilePath as tokens will be stored in environment variables
 
 // Helper functions for reading/writing notes
 const readNotes = () => {
@@ -45,6 +45,40 @@ const writeNotes = (notes) => {
   } catch (error) {
     console.error(`Backend: Error writing notes file ${notesFilePath}:`, error.message);
   }
+};
+
+// Helper functions for reading/writing Spotify tokens using environment variables
+const readSpotifyTokens = () => {
+  console.log('Backend: Attempting to read Spotify tokens from environment variables.');
+  const access_token = process.env.SPOTIFY_ACCESS_TOKEN;
+  const refresh_token = process.env.SPOTIFY_REFRESH_TOKEN;
+  const expires_in = parseInt(process.env.SPOTIFY_TOKEN_EXPIRY, 10);
+  const timestamp = parseInt(process.env.SPOTIFY_TOKEN_TIMESTAMP, 10);
+
+  if (access_token && refresh_token && !isNaN(expires_in) && !isNaN(timestamp)) {
+    console.log('Backend: Successfully read Spotify tokens from environment variables.');
+    return { access_token, refresh_token, expires_in, timestamp };
+  } else {
+    console.log('Backend: Spotify tokens not found or incomplete in environment variables.');
+    return {};
+  }
+};
+
+const writeSpotifyTokens = (tokens) => {
+  console.log('Backend: Attempting to write Spotify tokens to environment variables.');
+  if (tokens.access_token) {
+    process.env.SPOTIFY_ACCESS_TOKEN = tokens.access_token;
+  }
+  if (tokens.refresh_token) {
+    process.env.SPOTIFY_REFRESH_TOKEN = tokens.refresh_token;
+  }
+  if (tokens.expires_in) {
+    process.env.SPOTIFY_TOKEN_EXPIRY = tokens.expires_in.toString();
+  }
+  if (tokens.timestamp) {
+    process.env.SPOTIFY_TOKEN_TIMESTAMP = tokens.timestamp.toString();
+  }
+  console.log('Backend: Spotify tokens written to environment variables.');
 };
 
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -191,13 +225,12 @@ app.get('/callback', async (req, res) => {
         const access_token = data.access_token;
         const refresh_token = data.refresh_token;
 
-        // Redirect to frontend with tokens
-        res.redirect(FRONTEND_URI + '/about#' +
-          querystring.stringify({
-            access_token: access_token,
-            refresh_token: refresh_token,
-            state: state // Pass state back to frontend if needed
-          }));
+        // Save tokens to environment variables
+        writeSpotifyTokens({ access_token, refresh_token, expires_in: data.expires_in, timestamp: Date.now() });
+        console.log('Backend: Spotify tokens saved to environment variables.');
+
+        // Redirect to frontend (optional, can redirect to a success page)
+        res.redirect(FRONTEND_URI + '/about'); // Redirect without tokens in URL
       } else {
         console.error('Backend: Token exchange failed:', data);
         res.redirect('/#' +
@@ -217,8 +250,16 @@ app.get('/callback', async (req, res) => {
   }
 });
 
-app.get('/refresh_token', async (req, res) => {
-  const refresh_token = req.query.refresh_token;
+// Helper function to refresh access token using stored refresh token
+const refreshStoredAccessToken = async () => {
+  const tokens = readSpotifyTokens();
+  const refresh_token = tokens.refresh_token;
+
+  if (!refresh_token) {
+    console.error('Backend: No refresh token available to refresh.');
+    return null;
+  }
+
   const authOptions = {
     method: 'POST',
     headers: {
@@ -232,28 +273,55 @@ app.get('/refresh_token', async (req, res) => {
   };
 
   try {
+    console.log('Backend: Attempting to refresh access token using stored refresh token.');
     const response = await fetch('https://accounts.spotify.com/api/token', authOptions);
     const data = await response.json();
 
     if (response.ok) {
-      const access_token = data.access_token;
-      res.send({
-        'access_token': access_token
+      console.log('Backend: Token refresh successful.');
+      // Update stored tokens with new access token and expiry
+      writeSpotifyTokens({
+        ...tokens,
+        access_token: data.access_token,
+        expires_in: data.expires_in,
+        timestamp: Date.now(),
+        refresh_token: data.refresh_token || tokens.refresh_token // Spotify might return a new refresh token
       });
+      return data.access_token;
     } else {
-      res.status(response.status).send(data);
+      console.error('Backend: Token refresh failed:', data);
+      // Clear tokens if refresh fails
+      writeSpotifyTokens({}); // This will effectively clear the environment variables
+      return null;
     }
   } catch (error) {
-    console.error('Error refreshing token:', error);
-    res.status(500).send({ error: 'api_error' });
+    console.error('Backend: Error refreshing token:', error);
+    writeSpotifyTokens({}); // Clear tokens on error
+    return null;
   }
-});
+};
 
+
+// Endpoint to get currently playing track using stored tokens
 app.get('/currently-playing', async (req, res) => {
-  const access_token = req.query.access_token;
-  
-  if (!access_token) {
-    return res.status(400).send({ error: 'Access token is required' });
+  console.log('Backend: GET /currently-playing endpoint hit');
+  let tokens = readSpotifyTokens();
+  let access_token = tokens.access_token;
+  const expires_in = tokens.expires_in;
+  const timestamp = tokens.timestamp;
+
+  // Check if access token is expired (consider a small buffer)
+  const isExpired = !access_token || (Date.now() - timestamp) / 1000 > expires_in - 60; // 60 sec buffer
+
+  if (isExpired) {
+    console.log('Backend: Access token expired or not available. Attempting to refresh.');
+    access_token = await refreshStoredAccessToken();
+    if (!access_token) {
+      console.error('Backend: Failed to obtain valid access token after refresh attempt.');
+      return res.status(401).send({ error: 'Authentication failed' });
+    }
+  } else {
+    console.log('Backend: Using valid access token.');
   }
 
   const options = {
@@ -264,22 +332,24 @@ app.get('/currently-playing', async (req, res) => {
 
   try {
     const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
-    
+
     if (response.status === 204) { // No content
-      return res.status(200).send({ message: 'No currently playing track' });
+      console.log('Backend: Spotify API returned 204 (No Content).');
+      return res.status(200).send({ item: null, is_playing: false, message: 'No currently playing track' });
     }
-    
+
     const data = await response.json();
+    console.log('Backend: Spotify API /currently-playing response data:', data);
 
     if (response.ok) {
       res.send(data);
     } else {
-      console.error('Spotify API Error:', data);
+      console.error('Backend: Spotify API Error:', data);
       res.status(response.status).send(data);
     }
   } catch (error) {
-    console.error('Error fetching currently playing track:', error);
-    res.status(500).send({ 
+    console.error('Backend: Error fetching currently playing track:', error);
+    res.status(500).send({
       error: 'api_error',
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -287,8 +357,28 @@ app.get('/currently-playing', async (req, res) => {
   }
 });
 
+// Endpoint to get recently played tracks using stored tokens
 app.get('/recently-played', async (req, res) => {
-  const access_token = req.query.access_token;
+  console.log('Backend: GET /recently-played endpoint hit');
+  let tokens = readSpotifyTokens();
+  let access_token = tokens.access_token;
+  const expires_in = tokens.expires_in;
+  const timestamp = tokens.timestamp;
+
+  // Check if access token is expired (consider a small buffer)
+  const isExpired = !access_token || (Date.now() - timestamp) / 1000 > expires_in - 60; // 60 sec buffer
+
+  if (isExpired) {
+    console.log('Backend: Access token expired or not available. Attempting to refresh.');
+    access_token = await refreshStoredAccessToken();
+    if (!access_token) {
+      console.error('Backend: Failed to obtain valid access token after refresh attempt.');
+      return res.status(401).send({ error: 'Authentication failed' });
+    }
+  } else {
+    console.log('Backend: Using valid access token.');
+  }
+
   const options = {
     headers: {
       'Authorization': 'Bearer ' + access_token
@@ -298,14 +388,16 @@ app.get('/recently-played', async (req, res) => {
   try {
     const response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
     const data = await response.json();
+    console.log('Backend: Spotify API /recently-played response data:', data);
 
     if (response.ok) {
       res.send(data);
     } else {
+      console.error('Backend: Spotify API Error:', data);
       res.status(response.status).send(data);
     }
   } catch (error) {
-    console.error('Error fetching recently played tracks:', error);
+    console.error('Backend: Error fetching recently played tracks:', error);
     res.status(500).send({ error: 'api_error' });
   }
 });
