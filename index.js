@@ -283,26 +283,36 @@ const refreshStoredAccessToken = async () => {
 
     if (response.ok) {
       console.log('Backend: Token refresh successful.');
-      console.log('Backend: Token refresh successful.');
-      // Update ONLY access token and expiry in process.env for current runtime
-      console.log('Backend: refreshStoredAccessToken - Updating process.env with new tokens.'); // Added log
-      process.env.SPOTIFY_ACCESS_TOKEN = data.access_token;
-      process.env.SPOTIFY_TOKEN_EXPIRY = data.expires_in.toString();
-      process.env.SPOTIFY_TOKEN_TIMESTAMP = Date.now().toString();
-      // Note: The persistent refresh token must be set externally in environment configuration.
-      console.log('Backend: refreshStoredAccessToken - process.env updated.'); // Added log
+      // Read current tokens from file to preserve the refresh token if not rotated
+      const currentTokens = readSpotifyTokens();
+      const updatedTokens = {
+        ...currentTokens, // Keep existing tokens, including the refresh token
+        access_token: data.access_token,
+        expires_in: data.expires_in,
+        timestamp: Date.now(),
+      };
+
+      // If Spotify returns a new refresh token, update it in the stored tokens
+      if (data.refresh_token) {
+        console.log('Backend: Spotify returned a new refresh token. Updating stored token.');
+        updatedTokens.refresh_token = data.refresh_token;
+      }
+
+      // Write the updated tokens back to the file
+      writeSpotifyTokens(updatedTokens);
+
+      console.log('Backend: Successfully refreshed and updated stored tokens.');
       return data.access_token;
     } else {
-      console.error('Backend: refreshStoredAccessToken - Token refresh failed:', data); // Modified log
-      // Clear tokens if refresh fails
-      console.log('Backend: refreshStoredAccessToken - Clearing tokens due to refresh failure.'); // Added log
-      writeSpotifyTokens({}); // This will effectively clear the environment variables
+      console.error('Backend: refreshStoredAccessToken - Token refresh failed:', data);
+      // Optionally clear tokens if refresh fails and indicates invalid refresh token
+      // For now, we'll keep the existing tokens on failure, assuming temporary issue
       return null;
     }
   } catch (error) {
-    console.error('Backend: refreshStoredAccessToken - Error refreshing token:', error); // Modified log
-    console.log('Backend: refreshStoredAccessToken - Clearing tokens due to error.'); // Added log
-    writeSpotifyTokens({}); // Clear tokens on error
+    console.error('Backend: refreshStoredAccessToken - Error refreshing token:', error);
+    // Optionally clear tokens on error
+    // For now, we'll keep the existing tokens on error, assuming temporary issue
     return null;
   }
 };
