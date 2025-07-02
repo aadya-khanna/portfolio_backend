@@ -63,8 +63,11 @@ const generateRandomString = (length) => {
 };
 
 app.use(cors({
-  origin: "https://portfolio-frontend-seven-ashy.vercel.app",
-  credentials: true
+  origin: [
+    "https://portfolio-frontend-seven-ashy.vercel.app", 
+    "http://localhost:5173"
+  ],
+  credentials: true,
 }));
 
 app.use(express.json()); // Add middleware to parse JSON request bodies
@@ -107,6 +110,8 @@ app.post('/api/notes', (req, res) => {
 app.delete('/api/notes/:id', (req, res) => {
   const noteId = parseInt(req.params.id, 10);
   const receivedSecret = req.body.deleteSecret; // Get the secret from the request body
+
+  console.log('Received secret:',receivedSecret);
 
   console.log(`Backend: DELETE /api/notes/${noteId} endpoint hit`);
 
