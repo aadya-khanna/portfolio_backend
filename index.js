@@ -224,11 +224,12 @@ app.get('/callback', async (req, res) => {
       if (response.ok) {
         const access_token = data.access_token;
         const refresh_token = data.refresh_token;
-
-        // Save tokens to environment variables
+ 
+        // Save tokens to environment variables for current runtime
         writeSpotifyTokens({ access_token, refresh_token, expires_in: data.expires_in, timestamp: Date.now() });
-        console.log('Backend: Spotify tokens saved to environment variables.');
-
+        console.log('Backend: Spotify tokens saved to environment variables for current runtime.');
+        console.log('Backend: >>> IMPORTANT: Your Spotify Refresh Token is: <<<', refresh_token); // Clear log for refresh token
+ 
         // Redirect to frontend (optional, can redirect to a success page)
         res.redirect(FRONTEND_URI + '/about'); // Redirect without tokens in URL
       } else {
