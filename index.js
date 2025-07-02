@@ -98,7 +98,8 @@ const generateRandomString = (length) => {
 
 app.use(cors({
   origin: [
-    "https://aadyakhanna.com", 
+    "https://aadyakhanna.com",
+    "https://www.aadyakhanna.com",
     "http://localhost:5173"
   ],
   credentials: true,
