@@ -220,7 +220,8 @@ app.get('/callback', async (req, res) => {
     try {
       const response = await fetch('https://accounts.spotify.com/api/token', authOptions);
       const data = await response.json();
-
+      console.log('Backend: Spotify token exchange response data:', data);
+ 
       if (response.ok) {
         const access_token = data.access_token;
         const refresh_token = data.refresh_token;
