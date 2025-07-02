@@ -63,6 +63,7 @@ const readSpotifyTokens = () => {
     return {};
   }
 };
+// change 
 
 const writeSpotifyTokens = (tokens) => {
   console.log('Backend: Attempting to write Spotify tokens to environment variables.');
