@@ -349,7 +349,24 @@ app.get('/currently-playing', async (req, res) => {
   };
 
   try {
-    const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
+    let response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
+
+    // Check for 401 Unauthorized and attempt token refresh
+    if (response.status === 401) {
+      console.log('Backend: Spotify API returned 401 Unauthorized. Attempting token refresh.');
+      access_token = await refreshStoredAccessToken();
+
+      if (access_token) {
+        console.log('Backend: Token refresh successful. Retrying original request.');
+        // Update options with the new access token
+        options.headers['Authorization'] = 'Bearer ' + access_token;
+        // Retry the request
+        response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
+      } else {
+        console.error('Backend: Failed to refresh token after 401. Sending authentication failed.');
+        return res.status(401).send({ error: 'Authentication failed' });
+      }
+    }
 
     if (response.status === 204) { // No content
       console.log('Backend: Spotify API returned 204 (No Content).');
@@ -357,8 +374,6 @@ app.get('/currently-playing', async (req, res) => {
     }
 
     const data = await response.json();
-    // console.log('Backend: Spotify API /currently-playing response data:', data); // Removed log
-    // console.log('Backend: Raw data received from Spotify API:', JSON.stringify(data, null, 2)); // Removed log
  
     if (response.ok) {
       res.send(data);
@@ -405,7 +420,25 @@ app.get('/recently-played', async (req, res) => {
   };
 
   try {
-    const response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
+    let response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
+    
+    // Check for 401 Unauthorized and attempt token refresh
+    if (response.status === 401) {
+      console.log('Backend: Spotify API returned 401 Unauthorized. Attempting token refresh.');
+      access_token = await refreshStoredAccessToken();
+
+      if (access_token) {
+        console.log('Backend: Token refresh successful. Retrying original request.');
+        // Update options with the new access token
+        options.headers['Authorization'] = 'Bearer ' + access_token;
+        // Retry the request
+        response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
+      } else {
+        console.error('Backend: Failed to refresh token after 401. Sending authentication failed.');
+        return res.status(401).send({ error: 'Authentication failed' });
+      }
+    }
+
     const data = await response.json();
     console.log('Backend: Spotify API /recently-played response data:', data);
 
