@@ -4,15 +4,14 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import querystring from 'querystring';
-import fs from 'fs'; // Import the file system module
-import mongoose from 'mongoose'; // Import mongoose
-import SpotifyTokens from './models/SpotifyTokens.js'; // Import the SpotifyTokens model
-import spotifyAuthMiddleware from './middleware/spotifyAuth.js'; // Import the spotifyAuth middleware
+import fs from 'fs'; 
+import mongoose from 'mongoose'; 
+import SpotifyTokens from './models/SpotifyTokens.js'; 
+import spotifyAuthMiddleware from './middleware/spotifyAuth.js'; 
 
 
 dotenv.config();
 
-// MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose.connect(MONGODB_URI)
@@ -34,26 +33,20 @@ const noteSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  // Mongoose automatically adds an _id field
-  // We can keep the timestamp-based ID for now if needed, or rely on _id
-  // For simplicity, let's rely on Mongoose's _id
 });
 
-// Create Note Model
 const Note = mongoose.model('Note', noteSchema);
 
-
-// Helper functions for reading/writing Spotify tokens using MongoDB
 const readSpotifyTokens = async () => {
   console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens from MongoDB.');
   try {
-    const tokens = await SpotifyTokens.findOne(); // Assuming only one set of tokens
+    const tokens = await SpotifyTokens.findOne(); 
     if (tokens) {
       console.log('Backend: Successfully read Spotify tokens from MongoDB.');
       return tokens;
     } else {
       console.log('Backend: No Spotify tokens found in MongoDB.');
-      return null; // Return null if no tokens are found
+      return null; 
     }
   } catch (error) {
     console.error('Backend: Error reading Spotify tokens from MongoDB:', error.message);
@@ -174,8 +167,8 @@ app.get('/login', (req, res) => {
       response_type: 'code',
       client_id: CLIENT_ID,
       scope: scope,
-      redirect_uri: REDIRECT_URI, // Use the base REDIRECT_URI
-      state: state // Send state as a separate parameter
+      redirect_uri: REDIRECT_URI, 
+      state: state 
     });
 
   console.log(`Backend: Setting state and redirecting to Spotify auth URL: ${authUrl}`);
@@ -187,11 +180,6 @@ app.get('/callback', async (req, res) => {
   const state = req.query.state || null; // Get state from query parameter
 
   console.log(`Backend: Callback received - code: ${code}, state: ${state}`);
-
-  // In this simplified flow, we trust the state received from Spotify
-  // In a more secure implementation, you might store the state server-side
-  // before redirecting to Spotify and verify it here.
-  // For this portfolio project, relying on the state from Spotify is acceptable.
 
   if (state === null) {
     console.error('Backend: State parameter missing in callback.');
@@ -229,7 +217,7 @@ app.get('/callback', async (req, res) => {
         console.log('Backend: /callback - writeSpotifyTokens called.'); // Added log
         console.log('Backend: >>> IMPORTANT: Your Spotify Refresh Token is: <<<', refresh_token); // Clear log for refresh token
 
-        // Redirect to frontend (optional, can redirect to a success page)
+        // Redirect to frontend 
         res.redirect(FRONTEND_URI + '/about'); // Redirect without tokens in URL
       } else {
         console.error('Backend: Token exchange failed:', data);
@@ -294,21 +282,17 @@ const refreshStoredAccessToken = async () => {
         updatedTokens.refresh_token = data.refresh_token;
       }
 
-      // Write the updated tokens back to the file
+      // updated tokens back to the file
       writeSpotifyTokens(updatedTokens);
 
       console.log('Backend: Successfully refreshed and updated stored tokens.');
       return data.access_token;
     } else {
       console.error('Backend: refreshStoredAccessToken - Token refresh failed:', data);
-      // Optionally clear tokens if refresh fails and indicates invalid refresh token
-      // For now, we'll keep the existing tokens on failure, assuming temporary issue
       return null;
     }
   } catch (error) {
     console.error('Backend: refreshStoredAccessToken - Error refreshing token:', error);
-    // Optionally clear tokens on error
-    // For now, we'll keep the existing tokens on error, assuming temporary issue
     return null;
   }
 };
@@ -317,7 +301,7 @@ const refreshStoredAccessToken = async () => {
 // Endpoint to get currently playing track using stored tokens
 app.get('/currently-playing', spotifyAuthMiddleware, async (req, res) => {
   console.log('Backend: GET /currently-playing endpoint hit');
-  // Access token is now available on req.spotifyAccessToken due to middleware
+
   const access_token = req.spotifyAccessToken;
 
   const options = {
@@ -355,7 +339,7 @@ app.get('/currently-playing', spotifyAuthMiddleware, async (req, res) => {
 // Endpoint to get recently played tracks using stored tokens
 app.get('/recently-played', spotifyAuthMiddleware, async (req, res) => {
   console.log('Backend: GET /recently-played endpoint hit');
-  // Access token is now available on req.spotifyAccessToken due to middleware
+
   const access_token = req.spotifyAccessToken;
 
   const options = {
