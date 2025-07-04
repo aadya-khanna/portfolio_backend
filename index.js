@@ -6,6 +6,8 @@ import fetch from 'node-fetch';
 import querystring from 'querystring';
 import fs from 'fs'; // Import the file system module
 import mongoose from 'mongoose'; // Import mongoose
+import SpotifyTokens from './models/SpotifyTokens.js'; // Import the SpotifyTokens model
+import spotifyAuthMiddleware from './middleware/spotifyAuth.js'; // Import the spotifyAuth middleware
 
 
 dotenv.config();
@@ -17,7 +19,7 @@ mongoose.connect(MONGODB_URI)
   .then(() => console.log('Backend: MongoDB connected successfully.'))
   .catch(err => console.error('Backend: MongoDB connection error:', err));
 
-const DELETE_SECRET = process.env.DELETE_SECRET; 
+const DELETE_SECRET = process.env.DELETE_SECRET;
 
 const app = express();
 const port = process.env.PORT || 8888;
@@ -41,38 +43,32 @@ const noteSchema = new mongoose.Schema({
 const Note = mongoose.model('Note', noteSchema);
 
 
-// Helper functions for reading/writing Spotify tokens using a file
-const spotifyTokensFilePath = path.join(__dirname, 'spotify_tokens.json');
-
-const readSpotifyTokens = () => {
-  console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens from file.');
+// Helper functions for reading/writing Spotify tokens using MongoDB
+const readSpotifyTokens = async () => {
+  console.log('Backend: readSpotifyTokens - Attempting to read Spotify tokens from MongoDB.');
   try {
-    // Check if the file exists, if not, create it with an empty object
-    if (!fs.existsSync(spotifyTokensFilePath)) {
-      console.log('Backend: Spotify tokens file not found, creating a new one.');
-      fs.writeFileSync(spotifyTokensFilePath, JSON.stringify({}, null, 2), 'utf8');
-      return {}; // Return empty object for a new file
+    const tokens = await SpotifyTokens.findOne(); // Assuming only one set of tokens
+    if (tokens) {
+      console.log('Backend: Successfully read Spotify tokens from MongoDB.');
+      return tokens;
+    } else {
+      console.log('Backend: No Spotify tokens found in MongoDB.');
+      return null; // Return null if no tokens are found
     }
-
-    const data = fs.readFileSync(spotifyTokensFilePath, 'utf8');
-    console.log('Backend: Successfully read Spotify tokens data.');
-    // Ensure the parsed data is an object, default to empty object if not
-    const parsedData = JSON.parse(data);
-    return typeof parsedData === 'object' && parsedData !== null ? parsedData : {};
   } catch (error) {
-    console.error(`Backend: Error reading Spotify tokens file ${spotifyTokensFilePath}:`, error.message);
-    // If file is invalid JSON, return empty object
-    return {};
+    console.error('Backend: Error reading Spotify tokens from MongoDB:', error.message);
+    return null;
   }
 };
 
-const writeSpotifyTokens = (tokens) => {
-  console.log('Backend: writeSpotifyTokens - Attempting to write Spotify tokens to file.');
+const writeSpotifyTokens = async (tokens) => {
+  console.log('Backend: writeSpotifyTokens - Attempting to write Spotify tokens to MongoDB.');
   try {
-    fs.writeFileSync(spotifyTokensFilePath, JSON.stringify(tokens, null, 2), 'utf8');
-    console.log('Backend: Successfully wrote Spotify tokens to file.');
+    // Find and update the existing tokens, or create a new document if none exists
+    await SpotifyTokens.findOneAndUpdate({}, tokens, { upsert: true, new: true });
+    console.log('Backend: Successfully wrote Spotify tokens to MongoDB.');
   } catch (error) {
-    console.error(`Backend: Error writing Spotify tokens file ${spotifyTokensFilePath}:`, error.message);
+    console.error('Backend: Error writing Spotify tokens to MongoDB:', error.message);
   }
 };
 
@@ -227,9 +223,9 @@ app.get('/callback', async (req, res) => {
         const access_token = data.access_token;
         const refresh_token = data.refresh_token;
  
-        // Save tokens using writeSpotifyTokens (writes to process.env)
+        // Save tokens using writeSpotifyTokens (writes to MongoDB)
         console.log('Backend: /callback - Calling writeSpotifyTokens after successful token exchange.'); // Added log
-        writeSpotifyTokens({ access_token, refresh_token, expires_in: data.expires_in, timestamp: Date.now() });
+        await writeSpotifyTokens({ access_token, refresh_token, expires_in: data.expires_in, timestamp: Date.now() });
         console.log('Backend: /callback - writeSpotifyTokens called.'); // Added log
         console.log('Backend: >>> IMPORTANT: Your Spotify Refresh Token is: <<<', refresh_token); // Clear log for refresh token
 
@@ -319,28 +315,10 @@ const refreshStoredAccessToken = async () => {
 
 
 // Endpoint to get currently playing track using stored tokens
-app.get('/currently-playing', async (req, res) => {
+app.get('/currently-playing', spotifyAuthMiddleware, async (req, res) => {
   console.log('Backend: GET /currently-playing endpoint hit');
-  let tokens = readSpotifyTokens();
-  let access_token = tokens.access_token;
-  const expires_in = tokens.expires_in;
-  const timestamp = tokens.timestamp;
-
-  // Check if access token is expired (consider a small buffer)
-  const isExpired = !access_token || (Date.now() - timestamp) / 1000 > expires_in - 60; // 60 sec buffer
-
-  if (isExpired) {
-    console.log('Backend: Access token expired or not available. Attempting to refresh.');
-    access_token = await refreshStoredAccessToken();
-    if (!access_token) {
-      console.error('Backend: Failed to obtain valid access token after refresh attempt.');
-      return res.status(401).send({ error: 'Authentication failed' });
-    }
-  } else {
-    console.log('Backend: Using valid access token.');
-  }
-
-  console.log('Backend: Access token being used for Spotify API call:', access_token ? 'Token available' : 'No token');
+  // Access token is now available on req.spotifyAccessToken due to middleware
+  const access_token = req.spotifyAccessToken;
 
   const options = {
     headers: {
@@ -349,24 +327,7 @@ app.get('/currently-playing', async (req, res) => {
   };
 
   try {
-    let response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
-
-    // Check for 401 Unauthorized and attempt token refresh
-    if (response.status === 401) {
-      console.log('Backend: Spotify API returned 401 Unauthorized. Attempting token refresh.');
-      access_token = await refreshStoredAccessToken();
-
-      if (access_token) {
-        console.log('Backend: Token refresh successful. Retrying original request.');
-        // Update options with the new access token
-        options.headers['Authorization'] = 'Bearer ' + access_token;
-        // Retry the request
-        response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
-      } else {
-        console.error('Backend: Failed to refresh token after 401. Sending authentication failed.');
-        return res.status(401).send({ error: 'Authentication failed' });
-      }
-    }
+    const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', options);
 
     if (response.status === 204) { // No content
       console.log('Backend: Spotify API returned 204 (No Content).');
@@ -392,26 +353,10 @@ app.get('/currently-playing', async (req, res) => {
 });
 
 // Endpoint to get recently played tracks using stored tokens
-app.get('/recently-played', async (req, res) => {
+app.get('/recently-played', spotifyAuthMiddleware, async (req, res) => {
   console.log('Backend: GET /recently-played endpoint hit');
-  let tokens = readSpotifyTokens();
-  let access_token = tokens.access_token;
-  const expires_in = tokens.expires_in;
-  const timestamp = tokens.timestamp;
-
-  // Check if access token is expired (consider a small buffer)
-  const isExpired = !access_token || (Date.now() - timestamp) / 1000 > expires_in - 60; // 60 sec buffer
-
-  if (isExpired) {
-    console.log('Backend: Access token expired or not available. Attempting to refresh.');
-    access_token = await refreshStoredAccessToken();
-    if (!access_token) {
-      console.error('Backend: Failed to obtain valid access token after refresh attempt.');
-      return res.status(401).send({ error: 'Authentication failed' });
-    }
-  } else {
-    console.log('Backend: Using valid access token.');
-  }
+  // Access token is now available on req.spotifyAccessToken due to middleware
+  const access_token = req.spotifyAccessToken;
 
   const options = {
     headers: {
@@ -420,25 +365,7 @@ app.get('/recently-played', async (req, res) => {
   };
 
   try {
-    let response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
-    
-    // Check for 401 Unauthorized and attempt token refresh
-    if (response.status === 401) {
-      console.log('Backend: Spotify API returned 401 Unauthorized. Attempting token refresh.');
-      access_token = await refreshStoredAccessToken();
-
-      if (access_token) {
-        console.log('Backend: Token refresh successful. Retrying original request.');
-        // Update options with the new access token
-        options.headers['Authorization'] = 'Bearer ' + access_token;
-        // Retry the request
-        response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
-      } else {
-        console.error('Backend: Failed to refresh token after 401. Sending authentication failed.');
-        return res.status(401).send({ error: 'Authentication failed' });
-      }
-    }
-
+    const response = await fetch('https://api.spotify.com/v1/me/player/recently-played', options);
     const data = await response.json();
     console.log('Backend: Spotify API /recently-played response data:', data);
 
