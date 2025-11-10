@@ -8,19 +8,10 @@ import fs from 'fs';
 import mongoose from 'mongoose'; 
 import SpotifyTokens from './models/SpotifyTokens.js'; 
 import spotifyAuthMiddleware, { initializeTokenCache, updateTokens } from './middleware/spotifyAuth.js'; 
-
+import { connectToDatabase } from './db/connect.js';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-mongoose.connect(MONGODB_URI)
-  .then(async () => {
-    console.log('Backend: MongoDB connected successfully.');
-    // Initialize token cache after MongoDB connection
-    await initializeTokenCache();
-  })
-  .catch(err => console.error('Backend: MongoDB connection error:', err));
 
 const DELETE_SECRET = process.env.DELETE_SECRET;
 
@@ -342,6 +333,29 @@ app.get('/recently-played', spotifyAuthMiddleware, async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Backend listening at http://localhost:${port}`);
-});
+
+const startServer = async () => {
+  try {
+    // 1. Connect to the database using the singleton function
+    await connectToDatabase();
+    
+    // 2. Now that the DB is connected, initialize the Spotify token cache
+    // This uses the established connection pool
+    await initializeTokenCache(); 
+
+    // 3. Start listening for HTTP requests
+    app.listen(port, () => {
+      console.log(`Backend listening at http://localhost:${port}`);
+    });
+
+  } catch (err) {
+    // If connection or initialization fails, log and exit the process
+    console.error('FATAL: Server startup failed due to error:', err);
+    process.exit(1); 
+  }
+};
+
+startServer();
+
+
+
